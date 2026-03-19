@@ -1,29 +1,31 @@
 //Load environment variables from the .env file
 require("dotenv").config(); 
 
-const connectDB = require("./config/db");
 
 //This line imports the express framework
 const express = require("express");
+// Used for password hashing
+const bcrypt = require("bcryptjs");
+// Used for creating tokens for authentication and authorization
+const jwt = require("jsonwebtoken");
+// Used for validation of incoming data
+const {body , validationResult} = require("express-validator");
+
+
+// Importing the user Schema
+const User = require("./models/User");
+// Importing database
+const connectDB = require("./config/db");
+// Import middleware
+const authMiddleware = require("./middleware/auth");
+
 
 // Creates Express application
 const app = express(); 
 
-// Importing the user Schema
-const User = require("./models/user");
 
-// Used for password hashing
-const bcrypt = require("bcryptjs");
-
-// Used for creating tokens for authentication and authorization
-const jwt = require("jsonwebtoken");
-
-
-
+// Connecting database
 connectDB();
-
-
-
 
 // Middleware used for JSON parsing
 app.use(express.json()); 
@@ -33,13 +35,6 @@ app.use(express.json());
 app.get("/", (req, res) => {
     res.send("Knowledge Sharing Platform API Running");
 });
-
-
-// Test Route api
-app.get("/api/test", (req, res) => {
-    res.json({ message: "API working successfully" });
-});
-
 
 // post/api/users
 app.post("/api/users", async (req, res) => {
@@ -59,9 +54,21 @@ app.post("/api/users", async (req, res) => {
 
 });
 
-// Register API
-app.post("/api/users/register", async (req, res) => {
 
+// Register API
+app.post("/api/users/register",[
+   body("name").notEmpty().withMessage("Name is required"),
+    body("email").isEmail().withMessage("Enter valid email"),
+    body("password")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters"),
+], async (req, res) => {
+
+  const errors = validationResult(req);
+
+  if(!errors.isEmpty()){
+    return res.status(400).json({errors : errors.array()})
+  }
   const { name, email, password } = req.body;
 
   // Check if user already exists
@@ -88,8 +95,18 @@ app.post("/api/users/register", async (req, res) => {
 
 });
 
+
 // Login API
-app.post("/api/users/login", async (req, res) => {
+app.post("/api/users/login", [
+    body("email").isEmail().withMessage("Enter valid email"),
+    body("password").notEmpty().withMessage("Password is required")
+  ], async (req, res) => {
+
+  const errors = validationResult(req);
+
+  if(!errors.isEmpty()){
+    return res.status(400).json({errors : errors.array()})
+  }
 
   const { email, password } = req.body;
 
@@ -120,6 +137,16 @@ app.post("/api/users/login", async (req, res) => {
   });
 
 });
+
+// Protected API
+app.get("/api/profile", authMiddleware, async (req, res) => {
+
+  const user = await User.findById(req.user.id).select("-password");
+
+  res.json(user);
+
+});
+
 
 app.listen(process.env.PORT, () => {
     console.log(`Server running on port ${process.env.PORT}`);
